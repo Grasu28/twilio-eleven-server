@@ -1,27 +1,28 @@
-// ✅ Twilio + ElevenLabs AI Voice Streaming Server
-
 const express = require("express");
 const bodyParser = require("body-parser");
-const WebSocket = require("ws");
-const axios = require("axios");
 const { twiml } = require("twilio");
+const axios = require("axios");
+const http = require("http");
+const WebSocket = require("ws");
 
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ noServer: true });
+
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 3000;
 
-// 🧠 ElevenLabs
-const ELEVEN_API_KEY = "sk_ae509d624141ec779d6b2e91a11447320d55410a8fdf0d07";
-const AGENT_ID = "agent_01jz06gxzcf7xbmkn0pm20mha9";
+const ELEVEN_API_KEY = "PUNE_CHEIA_TA";
+const AGENT_ID = "PUNE_AGENT_ID_TAU";
 
-// 🎧 Twilio Voice Webhook
+// Ruta Twilio voice
 app.post("/voice", (req, res) => {
   const response = new twiml.VoiceResponse();
-  response.say("Conectez cu agentul AI. Va rugam asteptati.");
+  response.say("Conectez cu agentul AI. Vă rugăm așteptați.");
 
   response.connect().stream({
-    url: `wss://${req.hostname}/twilio-stream`,
+    url: `wss://${req.get("host")}/stream`,
     track: "both_tracks",
   });
 
@@ -29,76 +30,53 @@ app.post("/voice", (req, res) => {
   res.send(response.toString());
 });
 
-// 🌐 WebSocket Server for Twilio stream
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server pornit pe portul ${PORT}`);
-});
+// WebSocket upgrade handler
+server.on("upgrade", (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    console.log("✅ WebSocket conectat de la Twilio");
 
-const wss = new WebSocket.Server({ server, path: "/twilio-stream" });
+    ws.on("message", async (data) => {
+      // aici ai primi datele audio în format base64 sau binary
+      console.log("📥 Primit audio frame");
 
-wss.on("connection", async (twilioSocket) => {
-  console.log("📞 Conexiune Twilio WS deschisa");
+      // Exemplu: trimiți text de test agentului
+      const message = {
+        agent_id: AGENT_ID,
+        voice: "default",
+        text_input: "Salut! Cu ce te pot ajuta?",
+      };
 
-  const elevenSocket = new WebSocket(
-    `wss://api.elevenlabs.io/v1/agents/${AGENT_ID}/stream`,
-    [],
-    {
-      headers: {
-        "xi-api-key": ELEVEN_API_KEY,
-      },
-    }
-  );
+      try {
+        const aiResponse = await axios.post(
+          "https://api.elevenlabs.io/v1/agents/stream",
+          message,
+          {
+            headers: {
+              "xi-api-key": ELEVEN_API_KEY,
+              "Content-Type": "application/json",
+            },
+            responseType: "stream",
+          }
+        );
 
-  elevenSocket.on("open", () => {
-    console.log("🤖 Conectat la ElevenLabs WS");
-  });
-
-  elevenSocket.on("message", (data) => {
-    const parsed = JSON.parse(data);
-    if (parsed.audio) {
-      // Trimite audio generat de ElevenLabs inapoi la Twilio
-      const message = JSON.stringify({
-        event: "media",
-        media: {
-          payload: parsed.audio,
-        },
-      });
-      twilioSocket.send(message);
-    }
-  });
-
-  twilioSocket.on("message", (data) => {
-    const msg = JSON.parse(data);
-    if (msg.event === "media" && msg.media && msg.media.payload) {
-      // Trimite audio de la Twilio catre ElevenLabs
-      const audioMessage = JSON.stringify({
-        audio: msg.media.payload,
-      });
-      if (elevenSocket.readyState === WebSocket.OPEN) {
-        elevenSocket.send(audioMessage);
+        // Într-o versiune completă: stream-ul audio de aici se redă în apel
+        console.log("🧠 Răspuns de la agent primit");
+      } catch (err) {
+        console.error("❌ Eroare ElevenLabs:", err.message);
       }
-    }
-  });
+    });
 
-  twilioSocket.on("close", () => {
-    console.log("📴 Twilio WS inchis");
-    if (elevenSocket.readyState === WebSocket.OPEN) {
-      elevenSocket.close();
-    }
+    ws.on("close", () => {
+      console.log("🔌 WebSocket închis");
+    });
   });
-
-  elevenSocket.on("close", () => {
-    console.log("📴 ElevenLabs WS inchis");
-    if (twilioSocket.readyState === WebSocket.OPEN) {
-      twilioSocket.close();
-    }
-  });
-
-  twilioSocket.on("error", (err) => console.error("Eroare Twilio WS:", err));
-  elevenSocket.on("error", (err) => console.error("Eroare ElevenLabs WS:", err));
 });
 
-// Health check
+// Test route
 app.get("/", (req, res) => {
-  res.send("✅ Server Twilio ↔ ElevenLabs activ");
+  res.send("✅ Serverul Twilio-ElevenLabs este live");
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 Serverul rulează pe portul ${PORT}`);
 });
