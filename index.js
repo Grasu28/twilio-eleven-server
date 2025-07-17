@@ -15,7 +15,7 @@ const AGENT_ID = process.env.agent_01jz06gxzcf7xbmkn0pm20mha9 || "";
 app.post("/voice", (req, res) => {
   const response = new VoiceResponse();
 
-  response.say("Conectez cu agentul AI. Vă rugăm să începeți să vorbiți.");
+  response.say("Coneccting to AI. Please start to talk.");
 
   response.start().stream({
     url: `${req.protocol}://${req.get("host")}/stream`
